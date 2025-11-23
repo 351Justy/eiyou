@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食品栄養計算システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .hidden { display: none; }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        .fulfillment-low { background-color: #ef4444; }
+        .fulfillment-medium { background-color: #f59e0b; }
+        .fulfillment-good { background-color: #10b981; }
+        .fulfillment-high { background-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- ログイン画面 -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center px-4">
+        <div class="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
+            <h1 class="text-2xl font-bold text-gray-800 mb-2 text-center">🔒 ログイン</h1>
+            <p class="text-gray-600 text-center mb-6">食品栄養計算システム</p>
+            
+            <div id="loginError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+                パスワードが正しくありません
+            </div>
+            
+            <input 
+                type="password" 
+                id="passwordInput" 
+                placeholder="パスワードを入力"
+                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+            >
+            <button 
+                onclick="login()"
+                class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            >
+                ログイン
+            </button>
+        </div>
+    </div>
+
+    <!-- メイン画面 -->
+    <div id="mainScreen" class="hidden">
+        <div class="container mx-auto px-4 py-8 max-w-6xl">
+            <header class="mb-8">
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <h1 class="text-3xl font-bold text-gray-800 mb-2">🥗 食品栄養計算システム</h1>
+                        <p class="text-gray-600">過去1週間の平均摂取量と目標充足率を計算</p>
+                    </div>
+                    <button 
+                        onclick="logout()"
+                        class="text-sm bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+                    >
+                        ログアウト
+                    </button>
+                </div>
+            </header>
+
+            <!-- 食事入力フォーム -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">📝 食事を記録</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">個人名</label>
+                        <input 
+                            type="text" 
+                            id="personName" 
+                            placeholder="山田太郎"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">日付</label>
+                        <input 
+                            type="date" 
+                            id="mealDate"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">時刻</label>
+                        <input 
+                            type="time" 
+                            id="mealTime"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        食品入力（例: 納豆45g、ご飯160g、生卵60g、つゆ1.5g）
+                    </label>
+                    <textarea 
+                        id="foodInput" 
+                        rows="3"
+                        placeholder="納豆45g、ご飯160g、生卵60g、つゆ1.5g"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    ></textarea>
+                </div>
+
+                <div id="calculateError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4"></div>
+                
+                <div id="calculateLoading" class="hidden flex items-center justify-center py-4">
+                    <div class="loading-spinner"></div>
+                    <span class="ml-3 text-gray-600">AI が食品を照合中...</span>
+                </div>
+
+                <button 
+                    onclick="calculateNutrition()"
+                    class="w-full bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                >
+                    栄養価を計算して保存
+                </button>
+            </div>
+
+            <!-- 計算結果 -->
+            <div id="resultSection" class="hidden bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">✅ 計算結果</h2>
+                <div id="resultContent"></div>
+            </div>
+
+            <!-- 1週間サマリー -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">📊 過去1週間の平均摂取量</h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">個人名を選択</label>
+                    <div class="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="summaryPersonName" 
+                            placeholder="個人名を入力"
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                        <button 
+                            onclick="loadWeeklySummary()"
+                            class="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            データ読み込み
+                        </button>
+                    </div>
+                </div>
+
+                <div id="summaryLoading" class="hidden flex items-center justify-center py-8">
+                    <div class="loading-spinner"></div>
+                    <span class="ml-3 text-gray-600">データを読み込み中...</span>
+                </div>
+
+                <div id="summaryError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4"></div>
+
+                <div id="summaryContent" class="hidden">
+                    <div id="summaryInfo" class="bg-blue-50 border border-blue-200 px-4 py-3 rounded mb-6"></div>
+                    
+                    <!-- レーダーチャート -->
+                    <div class="mb-6">
+                        <h3 class="text-md font-semibold text-gray-700 mb-3">目標充足率（主要栄養素）</h3>
+                        <canvas id="radarChart" width="400" height="300"></canvas>
+                    </div>
+
+                    <!-- 栄養素詳細リスト -->
+                    <div>
+                        <h3 class="text-md font-semibold text-gray-700 mb-3">全栄養素の詳細</h3>
+                        <div id="nutrientsList" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 食事履歴 -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-lg font-semibold text-gray-800 mb-4">📅 食事履歴（過去30日）</h2>
+                <div id="historyContent" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let radarChartInstance = null;
+
+        // 今日の日付をデフォルトで設定
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            const now = new Date().toTimeString().split(' ')[0].substring(0, 5);
+            document.getElementById('mealDate').value = today;
+            document.getElementById('mealTime').value = now;
+            checkAuth();
+        });
+
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/check-auth');
+                const data = await response.json();
+                if (data.authenticated) {
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('mainScreen').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('認証チェックエラー:', error);
+            }
+        }
+
+        async function login() {
+            const password = document.getElementById('passwordInput').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('loginScreen').classList.add('hidden');
+                    document.getElementById('mainScreen').classList.remove('hidden');
+                } else {
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                errorDiv.textContent = 'ログインエラー: ' + error.message;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+                location.reload();
+            } catch (error) {
+                console.error('ログアウトエラー:', error);
+            }
+        }
+
+        async function calculateNutrition() {
+            const personName = document.getElementById('personName').value.trim();
+            const mealDate = document.getElementById('mealDate').value;
+            const mealTime = document.getElementById('mealTime').value;
+            const foodInput = document.getElementById('foodInput').value.trim();
+            
+            const errorDiv = document.getElementById('calculateError');
+            const loadingDiv = document.getElementById('calculateLoading');
+            
+            errorDiv.classList.add('hidden');
+            
+            if (!personName || !mealDate || !mealTime || !foodInput) {
+                errorDiv.textContent = '全ての項目を入力してください';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            loadingDiv.classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        person_name: personName,
+                        meal_date: mealDate,
+                        meal_time: mealTime,
+                        food_input: foodInput
+                    })
+                });
+                
+                const data = await response.json();
+                loadingDiv.classList.add('hidden');
+                
+                if (data.success) {
+                    displayCalculationResult(data);
+                    // 自動的にサマリーも更新
+                    document.getElementById('summaryPersonName').value = personName;
+                    await loadWeeklySummary();
+                    // 入力フィールドをクリア
+                    document.getElementById('foodInput').value = '';
+                } else {
+                    errorDiv.textContent = data.error;
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                loadingDiv.classList.add('hidden');
+                errorDiv.textContent = 'エラー: ' + error.message;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        function displayCalculationResult(data) {
+            const resultSection = document.getElementById('resultSection');
+            const resultContent = document.getElementById('resultContent');
+            
+            let html = '<div class="space-y-4">';
+            
+            // マッチした食品を表示
+            html += '<div class="mb-4"><h3 class="font-semibold text-gray-700 mb-2">照合結果:</h3><ul class="space-y-1">';
+            for (const item of data.matched_items) {
+                html += `<li class="text-sm text-gray-600">
+                    <span class="font-medium">${item.input_name}</span> (${item.weight}g) 
+                    → <span class="text-green-600">${item.matched_name}</span>
+                </li>`;
+            }
+            html += '</ul></div>';
+            
+            // 合計栄養価
+            html += '<div><h3 class="font-semibold text-gray-700 mb-2">合計栄養価:</h3>';
+            html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">';
+            const nutrients = data.total_nutrients;
+            for (const [key, value] of Object.entries(nutrients)) {
+                html += `<div class="bg-gray-50 p-2 rounded">
+                    <div class="text-xs text-gray-600">${key}</div>
+                    <div class="font-semibold">${value.toFixed(1)}</div>
+                </div>`;
+            }
+            html += '</div></div>';
+            
+            html += '</div>';
+            
+            resultContent.innerHTML = html;
+            resultSection.classList.remove('hidden');
+        }
+
+        async function loadWeeklySummary() {
+            const personName = document.getElementById('summaryPersonName').value.trim();
+            const loadingDiv = document.getElementById('summaryLoading');
+            const errorDiv = document.getElementById('summaryError');
+            const contentDiv = document.getElementById('summaryContent');
+            
+            errorDiv.classList.add('hidden');
+            contentDiv.classList.add('hidden');
+            
+            if (!personName) {
+                errorDiv.textContent = '個人名を入力してください';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            loadingDiv.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`/api/weekly-summary/${encodeURIComponent(personName)}`);
+                const data = await response.json();
+                
+                loadingDiv.classList.add('hidden');
+                
+                if (data.success) {
+                    displayWeeklySummary(data);
+                    await loadMealHistory(personName);
+                } else {
+                    errorDiv.textContent = data.error;
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (error) {
+                loadingDiv.classList.add('hidden');
+                errorDiv.textContent = 'エラー: ' + error.message;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        function displayWeeklySummary(data) {
+            const infoDiv = document.getElementById('summaryInfo');
+            const contentDiv = document.getElementById('summaryContent');
+            const nutrientsListDiv = document.getElementById('nutrientsList');
+            
+            // 期間情報
+            infoDiv.innerHTML = `
+                <p class="text-sm"><strong>${data.person_name}</strong> さんのデータ</p>
+                <p class="text-sm">期間: ${data.start_date} ～ ${data.end_date} (${data.period_days}日間)</p>
+            `;
+            
+            // レーダーチャートを描画（主要栄養素のみ）
+            const mainNutrients = [
+                'エネルギー', 'たんぱく質', '脂質', '食物繊維総量', 
+                'カルシウム', '鉄', 'ビタミンA', 'ビタミンC'
+            ];
+            
+            const radarData = {
+                labels: mainNutrients,
+                datasets: [{
+                    label: '充足率 (%)',
+                    data: mainNutrients.map(n => data.fulfillment_rates[n]),
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderColor: 'rgb(59, 130, 246)',
+                    pointBackgroundColor: 'rgb(59, 130, 246)',
+                    pointBorderColor: '#fff',
+                    pointHoverBackgroundColor: '#fff',
+                    pointHoverBorderColor: 'rgb(59, 130, 246)'
+                }, {
+                    label: '目標 (100%)',
+                    data: mainNutrients.map(() => 100),
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    borderColor: 'rgb(16, 185, 129)',
+                    borderDash: [5, 5],
+                    pointRadius: 0
+                }]
+            };
+            
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            
+            // 既存のチャートを破棄
+            if (radarChartInstance) {
+                radarChartInstance.destroy();
+            }
+            
+            radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: radarData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 150,
+                            ticks: {
+                                stepSize: 50
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+            
+            // 全栄養素の詳細リスト
+            let html = '';
+            for (const [nutrient, target] of Object.entries(data.daily_targets)) {
+                const average = data.average_daily[nutrient];
+                const fulfillment = data.fulfillment_rates[nutrient];
+                
+                let colorClass = 'fulfillment-low';
+                if (fulfillment >= 130) colorClass = 'fulfillment-high';
+                else if (fulfillment >= 100) colorClass = 'fulfillment-good';
+                else if (fulfillment >= 70) colorClass = 'fulfillment-medium';
+                
+                html += `
+                    <div class="border rounded-lg p-3">
+                        <div class="flex justify-between items-center mb-2">
+                            <div>
+                                <span class="font-semibold text-gray-700">${nutrient}</span>
+                                <span class="text-sm text-gray-500 ml-2">
+                                    平均 ${average.toFixed(1)} / 目標 ${target}
+                                </span>
+                            </div>
+                            <span class="text-lg font-bold ${fulfillment >= 100 ? 'text-green-600' : 'text-orange-600'}">
+                                ${fulfillment.toFixed(0)}%
+                            </span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-3">
+                            <div class="progress-bar ${colorClass} h-3 rounded-full" style="width: ${Math.min(fulfillment, 150)}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            nutrientsListDiv.innerHTML = html;
+            contentDiv.classList.remove('hidden');
+        }
+
+        async function loadMealHistory(personName) {
+            try {
+                const response = await fetch(`/api/meal-history/${encodeURIComponent(personName)}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const historyDiv = document.getElementById('historyContent');
+                    let html = '';
+                    
+                    if (data.meals.length === 0) {
+                        html = '<p class="text-gray-500 text-sm">食事履歴がありません</p>';
+                    } else {
+                        for (const meal of data.meals) {
+                            html += `
+                                <div class="border rounded p-3 hover:bg-gray-50">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <span class="font-semibold text-sm">${meal.meal_date} ${meal.meal_time}</span>
+                                            <p class="text-sm text-gray-600 mt-1">${meal.raw_input}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+                    
+                    historyDiv.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('履歴取得エラー:', error);
+            }
+        }
+
+        // Enterキーでログイン
+        document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+    </script>
+</body>
+</html>
